@@ -3,28 +3,32 @@ let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, "rabbit
 // Récupération des consumers RabbitMq
 let consumers = WS.call("GET","/consumers", [], false, false, false, "rabbitmq:rabbitmq", "http://localhost:15672/api");
 
-// Method permettant de convertir le nom d'un consumer en string
-let toConsumerName=c=>c.consumer_tag + " ("+c.channel_details.peer_host+":"+c.channel_details.peer_port+")";
+// Load configuration
+let _config = WS.call("GET","config.json", [], false, false, false, null, "./");
 
+// Method that convert the consumer name to a string
+let toConsumerName=c=>c.consumer_tag + " ("+c.channel_details.peer_host+":"+c.channel_details.peer_port+")";
+// Method that return the bindings count for exchanges
+let getBindingsCountExchange=c=>rabbitinfos.bindings.filter(binding=>binding.source==c.name).length;
+// Method that return the bindings count for queues
+let getBindingsCountQueueFromBindings=c=>rabbitinfos.bindings.filter(binding=>binding.destination==c.name).length;
+let getBindingsCountQueueFromConsumers=c=>consumers.filter(consumer=>consumer.queue.name==c.name).length;
+let getBindingsCountQueue=c=>getBindingsCountQueueFromBindings(c)+getBindingsCountQueueFromConsumers(c)
 // Transform data to an object readable for graph d3js
 json = {
   nodes:[
-    ...rabbitinfos.exchanges.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:i, name: c.name, group: 1, color:1, bindingscount:rabbitinfos.bindings.filter(binding=>binding.source==c.name).length })),
-    ...rabbitinfos.queues.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:rabbitinfos.exchanges.length+i, name: c.name, group: 0, color:0, bindingscount:rabbitinfos.bindings.filter(binding=>binding.destination==c.name).length })),
+    ...rabbitinfos.exchanges.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:i, name: c.name, group: 1, color:1, bindingscount:getBindingsCountExchange(c)})),
+    ...rabbitinfos.queues.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:rabbitinfos.exchanges.length+i, name: c.name, group: 0, color:0, bindingscount: getBindingsCountQueue(c)})),
     ...consumers.map((c,i)=>({ id:rabbitinfos.exchanges.length+rabbitinfos.queues.length+i, name: toConsumerName(c), group: 2, color:2, bindingscount:1 }))
   ].sort((a,b)=>b.bindingscount-a.bindingscount)
 }
 json.links=[
-  ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, value:1 })),
+  ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, value:1 })),
   ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, value:2 }))
 ]
 
 // output in console the data used
 console.log(json);
-
-// Color Scheme for nodes
-// 0: Exchanges, 1: Queues, 2: Consumers
-var fill = ["#19F5EF", "#FF7900", "#AADE0B"]
 
 var svg = d3.select("svg")
     .attr("class", "canvas")
@@ -94,16 +98,16 @@ function initialize() {
         .attr("class", "link")
         .attr('marker-end', 'url(#arrowhead)')
         .style("display", "block")
-        .style("stroke", "black")
-        .style("stroke-width", 1)
+        .style("stroke", _config.linkstrokecolor)
+        .style("stroke-width", _config.linkstrokewidth)
 
     linkPaths = linksContainer.selectAll(".linkPath")
         .data(json.links)
         .join("path")
         .style("pointer-events", "none")
         .attr("class", "linkPath")
-        .attr("fill-opacity", 1)
-        .attr("stroke-opacity", 1)
+        .attr("fill-opacity", _config.linkopacity)
+        .attr("stroke-opacity", _config.linkopacity)
         .attr("id", function (d, i) { return "linkPath" + i })
         .style("display", "block")
 
@@ -113,8 +117,8 @@ function initialize() {
         .style("pointer-events", "none")
         .attr("class", "linkLabel")
         .attr("id", function (d, i) { return "linkLabel" + i })
-        .attr("font-size", 16)
-        .attr("fill", "black")
+        .attr("font-size", _config.linklabelsize)
+        .attr("fill", _config.linklabelcolor)
         .text("")
 
     linkLabels
@@ -138,8 +142,9 @@ function initialize() {
     node.selectAll("circle")
         .data(d => [d])
         .join("circle")
-        .attr("r", 30)
-        .style("fill", function (d) { return fill[d.color] })
+        .attr("r", _config.nodesize)
+        .style("opacity", (d)=>d.bindingscount>0?1.0:0.2)
+        .style("fill", function (d) { return _config.colorscheme[d.color] })
         .on("mouseenter", mouseEnter)
         .on("mouseleave", mouseLeave)
 

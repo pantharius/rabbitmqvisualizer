@@ -1,0 +1,9 @@
+{
+    "colorscheme":["#19F5EF", "#FF7900", "#AADE0B"],
+    "linkstrokewidth" : 1,
+    "linkstrokecolor":"black",
+    "linkopacity": 1,
+    "linklabelsize": 16,
+    "linklabelcolor": "black",
+    "nodesize": 30
+}
