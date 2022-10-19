@@ -1,10 +1,10 @@
-// Récupération des informations RabbitMq
-let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, "rabbitmq:rabbitmq", "http://localhost:15672/api");
-// Récupération des consumers RabbitMq
-let consumers = WS.call("GET","/consumers", [], false, false, false, "rabbitmq:rabbitmq", "http://localhost:15672/api");
-
 // Load configuration
 let _config = WS.call("GET","config.json", [], false, false, false, null, "./");
+
+// Récupération des informations RabbitMq
+let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+// Récupération des consumers RabbitMq
+let consumers = WS.call("GET","/consumers", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
 
 // Method that convert the consumer name to a string
 let toConsumerName=c=>c.consumer_tag + " ("+c.channel_details.peer_host+":"+c.channel_details.peer_port+")";
@@ -61,10 +61,10 @@ var nodesContainer = svg.append("g").attr("class", nodesContainer)
 var force = d3.forceSimulation()
     .force("link", d3.forceLink().id(function (d) {
         return d.id
-    }).distance(40))
-    .force("charge", d3.forceManyBody().strength(-45))
+    }).distance(20))
+    .force("charge", d3.forceManyBody().strength(-35))
     .force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
-    .force("collision", d3.forceCollide().radius(50))
+    .force("collision", d3.forceCollide().radius(40))
 
 function nodesByTypeAfterForce(nodeId, sieved, type) {
 

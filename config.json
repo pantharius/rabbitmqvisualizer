@@ -5,5 +5,7 @@
     "linkopacity": 1,
     "linklabelsize": 16,
     "linklabelcolor": "black",
-    "nodesize": 30
+    "nodesize": 30,
+    "rabbitUsername":"rabbitmq",
+    "rabbitPassword":"rabbitmq"   
 }
