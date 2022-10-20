@@ -7,7 +7,7 @@ let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, _config
 let consumers = WS.call("GET","/consumers", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
 
 // Method that convert the consumer name to a string
-let toConsumerName=c=>c.consumer_tag + " ("+c.channel_details.peer_host+":"+c.channel_details.peer_port+")";
+let toConsumerName=c=>c.channel_details.peer_host+":"+c.channel_details.peer_port;
 // Method that return the bindings count for exchanges
 let getBindingsCountExchange=c=>rabbitinfos.bindings.filter(binding=>binding.source==c.name).length;
 // Method that return the bindings count for queues
@@ -15,16 +15,22 @@ let getBindingsCountQueueFromBindings=c=>rabbitinfos.bindings.filter(binding=>bi
 let getBindingsCountQueueFromConsumers=c=>consumers.filter(consumer=>consumer.queue.name==c.name).length;
 let getBindingsCountQueue=c=>getBindingsCountQueueFromBindings(c)+getBindingsCountQueueFromConsumers(c)
 // Transform data to an object readable for graph d3js
+let nodeindex=1;
 json = {
   nodes:[
-    ...rabbitinfos.exchanges.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:i, name: c.name, group: 1, color:1, bindingscount:getBindingsCountExchange(c)})),
-    ...rabbitinfos.queues.sort((a,b)=>a.name-b.name).map((c,i)=>({ id:rabbitinfos.exchanges.length+i, name: c.name, group: 0, color:0, bindingscount: getBindingsCountQueue(c)})),
-    ...consumers.map((c,i)=>({ id:rabbitinfos.exchanges.length+rabbitinfos.queues.length+i, name: toConsumerName(c), group: 2, color:2, bindingscount:1 }))
-  ].sort((a,b)=>b.bindingscount-a.bindingscount)
+    ...[...new Map(rabbitinfos.bindings
+        .map(binding=>([...rabbitinfos.exchanges.filter(e=>e.name == binding.source).map(e=>({...e,type:"e"})),...rabbitinfos.queues.filter(q=>q.name == binding.destination)]))
+        .flat(1).map(c=>[c.name, c])).values()]
+          .map(u=>u?({ id: nodeindex++, name: u.name, color:u.type=="e"?1:0 }):0).filter(u=>u!=0),
+    ...rabbitinfos.queues.filter(c=>getBindingsCountQueueFromConsumers(c)>0).map(c=>({ id:nodeindex++, name: c.name, color:0 })),
+    ...consumers.map(c=>({ id:nodeindex++, name: toConsumerName(c), color:2 })),
+    ...rabbitinfos.exchanges.filter(c=>getBindingsCountExchange(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:1, alone:true })),
+    ...rabbitinfos.queues.filter(c=>getBindingsCountQueue(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:0, alone:true }))
+  ]
 }
 json.links=[
   ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, value:1 })),
-  ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, value:2 }))
+  ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, type:c.consumer_tag, value:2 }))
 ]
 
 // output in console the data used
@@ -61,10 +67,21 @@ var nodesContainer = svg.append("g").attr("class", nodesContainer)
 var force = d3.forceSimulation()
     .force("link", d3.forceLink().id(function (d) {
         return d.id
-    }).distance(20))
+    }).distance(_config.linkSizeStart))
     .force("charge", d3.forceManyBody().strength(-35))
     .force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
     .force("collision", d3.forceCollide().radius(40))
+
+// Grow link size after delay
+setTimeout(()=>{
+  force.force("link", d3.forceLink().id(function (d) {
+      return d.id
+  }).distance(_config.linkSizeAfter))
+  force.alphaTarget(1).restart();
+  setTimeout(()=>{
+    force.alphaTarget(0).restart()
+  },300);
+},500);
 
 function nodesByTypeAfterForce(nodeId, sieved, type) {
 
@@ -143,7 +160,7 @@ function initialize() {
         .data(d => [d])
         .join("circle")
         .attr("r", _config.nodesize)
-        .style("opacity", (d)=>d.bindingscount>0?1.0:0.2)
+        .style("opacity", (d)=>d.alone?_config.nodeOpacityNoBinding:_config.nodeOpacityWithBindings)
         .style("fill", function (d) { return _config.colorscheme[d.color] })
         .on("mouseenter", mouseEnter)
         .on("mouseleave", mouseLeave)
@@ -155,8 +172,8 @@ function initialize() {
         .attr("font-family", "FontAwesome")
         .attr("dominant-baseline", "central")
         .attr("text-anchor", "middle")
-        .attr("font-size", 20)
-        .attr("fill", "black")
+        .attr("font-size", _config.nodeTextOuterBubbleSize)
+        .attr("fill", _config.nodeTextOuterBubbleColor)
         .attr("pointer-events", "none")
         .attr("dy", "-1em")
         .text(function (d) {
@@ -165,8 +182,8 @@ function initialize() {
     node.append("text")
         .attr("dominant-baseline", "central")
         .attr("text-anchor", "middle")
-        .attr("font-size", 13)
-        .attr("fill", "black")
+        .attr("font-size", _config.nodeTextInsideBubbleSize)
+        .attr("fill", _config.nodeTextInsideBubbleColor)
         .attr("pointer-events", "none")
         .attr("dy", "0.5em")
         .text(function (d) {

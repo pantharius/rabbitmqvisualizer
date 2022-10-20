@@ -7,5 +7,13 @@
     "linklabelcolor": "black",
     "nodesize": 30,
     "rabbitUsername":"rabbitmq",
-    "rabbitPassword":"rabbitmq"   
+    "rabbitPassword":"rabbitmq",
+    "linkSizeStart": 20, 
+    "linkSizeAfter": 40,
+    "nodeOpacityNoBinding": 0.2,
+    "nodeOpacityWithBindings": 1,
+    "nodeTextInsideBubbleSize": 13,
+    "nodeTextInsideBubbleColor": "black",
+    "nodeTextOuterBubbleSize": 20,
+    "nodeTextOuterBubbleColor": "black"
 }
