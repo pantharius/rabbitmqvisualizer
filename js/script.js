@@ -2,11 +2,15 @@
 let _config = WS.call("GET","config.json", [], false, false, false, null, "./");
 
 // Get RabbitMq exchanges, queues and bindings
-let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+let rabbitinfos = {
+    exchanges:WS.call("GET","/exchanges", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, _config.baseApiUrl).filter(c=>c.name!=""),
+    queues:WS.call("GET","/queues", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, _config.baseApiUrl),
+    bindings:WS.call("GET","/bindings", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, _config.baseApiUrl),
+};
 // Get RabbitMq consumers
-let consumers = WS.call("GET","/consumers", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+let consumers = WS.call("GET","/consumers", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, _config.baseApiUrl);
 // Get RabbitMq policies
-let policies = WS.call("GET","/policies", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+let policies = WS.call("GET","/policies", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, _config.baseApiUrl);
 
 
 let echangealternatesFromPolicies = policies.filter(policy=>policy.definition["alternate-exchange"])
@@ -19,6 +23,7 @@ let echangedeadletterFromPolicies = policies.filter(policy=>policy.definition["d
         .filter(c=>new RegExp(policy.pattern).test(c.name))
         .map(c=>([c,rabbitinfos.exchanges.find(ex=>ex.name==policy.definition["dead-letter-exchange"]),policy.name]))).flat(1)
 
+let makeUniqueByKey=(key,array)=>[...new Map(array.map(c=>[c[key],c])).values()]
 // Method that convert the consumer name to a string
 let toConsumerName=c=>c.channel_details.peer_host+":"+c.channel_details.peer_port;
 // Method that return the bindings count for exchanges
@@ -32,7 +37,7 @@ let getBindingsCountQueue=c=>getBindingsCountQueueFromBindings(c)+getBindingsCou
 // Transform data to an object readable for graph d3js
 let nodeindex=1;
 json = {
-  nodes:[
+  nodes:makeUniqueByKey('name',[
     ...[...new Map(rabbitinfos.bindings
         .map(binding=>([...rabbitinfos.exchanges.filter(e=>e.name == binding.source).map(e=>({...e,type:"e"})),...rabbitinfos.queues.filter(q=>q.name == binding.destination)]))
         .flat(1).map(c=>[c.name, c])).values()]
@@ -45,10 +50,10 @@ json = {
     ...consumers.map(c=>({ id:nodeindex++, name: toConsumerName(c), color:2 })),
     ...rabbitinfos.exchanges.filter(c=>getBindingsCountExchange(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:1, alone:true })),
     ...rabbitinfos.queues.filter(c=>getBindingsCountQueue(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:0, alone:true }))
-  ]
+  ])
 }
 json.links=[
-  ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, color:0 })),
+  ...rabbitinfos.bindings.filter(c=>c.source!="").map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, color:0 })),
   ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, type:c.consumer_tag, color:1 })),
   ...echangealternatesFromPolicies.map(c=>({ source: json.nodes.find(x=>x.name==c[0].name).id, target: json.nodes.find(x=>x.name==c[1].name).id, type:c[2], color:2 })),
   ...echangedeadletterFromPolicies.map(c=>({ source: json.nodes.find(x=>x.name==c[0].name).id, target: json.nodes.find(x=>x.name==c[1].name).id, type:c[2], color:3 })),
