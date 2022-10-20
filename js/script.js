@@ -1,15 +1,30 @@
 // Load configuration
 let _config = WS.call("GET","config.json", [], false, false, false, null, "./");
 
-// Récupération des informations RabbitMq
+// Get RabbitMq exchanges, queues and bindings
 let rabbitinfos = WS.call("GET","/definitions", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
-// Récupération des consumers RabbitMq
+// Get RabbitMq consumers
 let consumers = WS.call("GET","/consumers", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+// Get RabbitMq policies
+let policies = WS.call("GET","/policies", [], false, false, false, _config.rabbitUsername+":"+_config.rabbitPassword, "http://localhost:15672/api");
+
+
+let echangealternatesFromPolicies = policies.filter(policy=>policy.definition["alternate-exchange"])
+    .map(policy=>rabbitinfos.exchanges
+        .filter(c=>new RegExp(policy.pattern).test(c.name))
+        .map(c=>([c,rabbitinfos.exchanges.find(ex=>ex.name==policy.definition["alternate-exchange"]),policy.name]))).flat(1)
+
+let echangedeadletterFromPolicies = policies.filter(policy=>policy.definition["dead-letter-exchange"])
+    .map(policy=>rabbitinfos.exchanges
+        .filter(c=>new RegExp(policy.pattern).test(c.name))
+        .map(c=>([c,rabbitinfos.exchanges.find(ex=>ex.name==policy.definition["dead-letter-exchange"]),policy.name]))).flat(1)
 
 // Method that convert the consumer name to a string
 let toConsumerName=c=>c.channel_details.peer_host+":"+c.channel_details.peer_port;
 // Method that return the bindings count for exchanges
-let getBindingsCountExchange=c=>rabbitinfos.bindings.filter(binding=>binding.source==c.name).length;
+let getBindingsCountExchangeFromBindings=c=>rabbitinfos.bindings.filter(binding=>binding.source==c.name).length;
+let getBindingsCountExchangeFromPolicies=c=>[...new Map([...echangealternatesFromPolicies,...echangedeadletterFromPolicies].filter(x=>x[0].name == c.name).map(x=>[x[1].name,x[1]])).values()].length
+let getBindingsCountExchange=c=>getBindingsCountExchangeFromBindings(c)+getBindingsCountExchangeFromPolicies(c)
 // Method that return the bindings count for queues
 let getBindingsCountQueueFromBindings=c=>rabbitinfos.bindings.filter(binding=>binding.destination==c.name).length;
 let getBindingsCountQueueFromConsumers=c=>consumers.filter(consumer=>consumer.queue.name==c.name).length;
@@ -21,7 +36,11 @@ json = {
     ...[...new Map(rabbitinfos.bindings
         .map(binding=>([...rabbitinfos.exchanges.filter(e=>e.name == binding.source).map(e=>({...e,type:"e"})),...rabbitinfos.queues.filter(q=>q.name == binding.destination)]))
         .flat(1).map(c=>[c.name, c])).values()]
+          .filter(c=>c.type!="e" || [...new Map([...echangealternatesFromPolicies,...echangedeadletterFromPolicies].map(c=>[c[1].name,c[1]])).values()].find(x=>x.name==c.name)==null)
           .map(u=>u?({ id: nodeindex++, name: u.name, color:u.type=="e"?1:0 }):0).filter(u=>u!=0),
+    ...[...new Map(echangealternatesFromPolicies.map(c=>[c[1].name,c[1]])).values()].map(c=>({ id: nodeindex++, name: c.name, color:3 })),
+    ...[...new Map(echangedeadletterFromPolicies.map(c=>[c[1].name,c[1]])).values()].map(c=>({ id: nodeindex++, name: c.name, color:4 })),
+    ...rabbitinfos.exchanges.filter(c=>getBindingsCountExchangeFromPolicies(c)>0).map(c=>({ id:nodeindex++, name: c.name, color:1 })),
     ...rabbitinfos.queues.filter(c=>getBindingsCountQueueFromConsumers(c)>0).map(c=>({ id:nodeindex++, name: c.name, color:0 })),
     ...consumers.map(c=>({ id:nodeindex++, name: toConsumerName(c), color:2 })),
     ...rabbitinfos.exchanges.filter(c=>getBindingsCountExchange(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:1, alone:true })),
@@ -29,8 +48,10 @@ json = {
   ]
 }
 json.links=[
-  ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, value:1 })),
-  ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, type:c.consumer_tag, value:2 }))
+  ...rabbitinfos.bindings.map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, color:0 })),
+  ...consumers.map(c=>({ source: json.nodes.find(x=>x.name==c.queue.name).id, target: json.nodes.find(x=>x.name==toConsumerName(c)).id, type:c.consumer_tag, color:1 })),
+  ...echangealternatesFromPolicies.map(c=>({ source: json.nodes.find(x=>x.name==c[0].name).id, target: json.nodes.find(x=>x.name==c[1].name).id, type:c[2], color:2 })),
+  ...echangedeadletterFromPolicies.map(c=>({ source: json.nodes.find(x=>x.name==c[0].name).id, target: json.nodes.find(x=>x.name==c[1].name).id, type:c[2], color:3 })),
 ]
 
 // output in console the data used
@@ -46,19 +67,22 @@ var svg = d3.select("svg")
     .append("g")
 
 // Append markers to svg
-svg.append("defs").append("marker")
-    .attr("id", "arrowhead")
-    .attr("viewBox", "-0 -5 10 10")
-    .attr("refX", 8)
-    .attr("refY", 0)
-    .attr("orient", "auto")
-    .attr("markerWidth", 50)
-    .attr("markerHeight", 50)
-    .attr("xoverflow", "visible")
-    .append("svg:path")
-    .attr("d", "M 0,-1 L 2 ,0 L 0,1")
-    .attr("fill", "black")
-    .style("stroke", "none")
+for (let num = 0; num < _config.linkscolorscheme.length; num++) {
+    svg.append("defs").append("marker")
+        .attr("id", "arrowheadcolor"+num)
+        .attr("viewBox", "-0 -5 10 10")
+        .attr("refX", 7.75)
+        .attr("refY", 0)
+        .attr("orient", "auto")
+        .attr("markerWidth", 50/_config.linkstrokewidth)
+        .attr("markerHeight", 50/_config.linkstrokewidth)
+        .attr("xoverflow", "visible")
+        .append("svg:path")
+        .attr("d", "M 0,-1 L 2 ,0 L 0,1")
+        .attr("fill", _config.linkscolorscheme[num])
+        .style("stroke", "none")
+}
+
 
 var linksContainer = svg.append("g").attr("class", linksContainer)
 var nodesContainer = svg.append("g").attr("class", nodesContainer)
@@ -68,7 +92,7 @@ var force = d3.forceSimulation()
     .force("link", d3.forceLink().id(function (d) {
         return d.id
     }).distance(_config.linkSizeStart))
-    .force("charge", d3.forceManyBody().strength(-35))
+    .force("charge", d3.forceManyBody().strength(-15))
     .force("center", d3.forceCenter(window.innerWidth / 2, window.innerHeight / 2))
     .force("collision", d3.forceCollide().radius(40))
 
@@ -113,9 +137,9 @@ function initialize() {
         .data(json.links)
         .join("line")
         .attr("class", "link")
-        .attr('marker-end', 'url(#arrowhead)')
+        .attr('marker-end', d=>'url(#arrowheadcolor'+d.color+')')
         .style("display", "block")
-        .style("stroke", _config.linkstrokecolor)
+        .style("stroke", d=>_config.linkscolorscheme[d.color])
         .style("stroke-width", _config.linkstrokewidth)
 
     linkPaths = linksContainer.selectAll(".linkPath")
@@ -135,7 +159,7 @@ function initialize() {
         .attr("class", "linkLabel")
         .attr("id", function (d, i) { return "linkLabel" + i })
         .attr("font-size", _config.linklabelsize)
-        .attr("fill", _config.linklabelcolor)
+        .attr("fill", d=>_config.linkscolorscheme[d.color])
         .text("")
 
     linkLabels
