@@ -1,8 +1,13 @@
 # RabbitMQ Visualizer
 
-It connect to your RabbitMQ instance and show complete map of it :
+It connect to your RabbitMQ instance and show complete map of it by vhosts :
+![Complete map of you RabbitMQ instance](./doc/salesproject.png)
 
-![Complete map of you RabbitMQ instance](./doc/flouted.png)
+Links legend :
+ * **Black** : Binding
+ * **Red** : DeadLetter (by policy)
+ * **Blue** : Alternate (by policy)
 
-And now if you zoom, you can see Exchanges (in red), Queues (in blue) and Consumer (in green)  :
-![Complete map of you RabbitMQ instance](./doc/scratched.png)
+Nodes legend :
+ * **Orange** : Exchange
+ * **Cyan** : Queue
