@@ -69,7 +69,7 @@ var Graph = {
                 ...(_config.ShowConsumers?Graph.currentConfig.consumers.map(c=>({ id:nodeindex++, name: Graph.toConsumerName(c), color:2 })):[]),
                 ...Graph.currentConfig.exchanges.filter(c=>Graph.getBindingsCountExchange(c,echangealternatesFromPolicies,echangedeadletterFromPolicies)==0).map(c=>({ id:nodeindex++, name: c.name, color:1, alone:true })),
                 ...Graph.currentConfig.queues.filter(c=>Graph.getBindingsCountQueue(c)==0).map(c=>({ id:nodeindex++, name: c.name, color:0, alone:true }))
-            ])
+            ].sort((a,b)=>(a.alone?0:1)-(b.alone?0:1)))
         }
         json.links=[
             ...Graph.currentConfig.bindings.filter(c=>c.source!="").map(c=>({ source: json.nodes.find(x=>x.name==c.source).id, target: json.nodes.find(x=>x.name==c.destination).id, type:c.routing_key, color:0 })),
