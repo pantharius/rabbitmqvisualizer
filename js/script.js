@@ -3,6 +3,7 @@ let _config = {
   baseApiUrl: "http://localhost:15672/api",
   rabbitUsername: "admin",
   rabbitPassword: "nestor",
+  // Color scheme [queue, exchange, consumer, alternate-only-exchange, deadletter-only-exchange]
   colorscheme: ["#18F5ED", "#FF7700", "#A9DE0B", "#3D00E0", "#FA0192"],
   linkscolorscheme: ["black", "#20c997", "#0d6efd", "#dc3545"],
   linkstrokewidth: 3,
